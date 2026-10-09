@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param()
+param([switch]$Hardened)
 
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient
@@ -44,9 +44,11 @@ function Read-LabNode {
 
 try {
     $powershell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-    $demo = Start-Process -FilePath $powershell -ArgumentList @(
+    $launchArguments = @(
         '-NoProfile', '-STA', '-ExecutionPolicy', 'Bypass', '-File', ('"{0}"' -f $fixture)
-    ) -WindowStyle Hidden -PassThru
+    )
+    if ($Hardened) { $launchArguments += '-Hardened' }
+    $demo = Start-Process -FilePath $powershell -ArgumentList $launchArguments -WindowStyle Hidden -PassThru
     $deadline = [DateTime]::UtcNow.AddSeconds(15)
     do {
         $demo.Refresh()
@@ -66,20 +68,37 @@ try {
         $_.name -eq 'LAB-ONLY identity: Alex Example; email: alex@example.invalid; address: 123 Example Street, Fictional City'
     })
     $identityExposed = $identityNodes.Count -gt 0
+    $rules = @(
+        @{ id = 'masked-label-exposure'; control = 'MaskedIdentity'; canary = 'LAB-ONLY masked identity: alex@example.invalid'; explanation = 'Visual masking left the full fictional email in the accessible name.' },
+        @{ id = 'disabled-field-exposure'; control = 'DisabledIdentity'; canary = 'LAB-ONLY disabled identity: Alex Example, 123 Example Street'; explanation = 'Disabling interaction did not remove fictional identity metadata.' }
+    )
+    $findings = @([pscustomobject]@{
+        id = 'synthetic-identity-in-accessible-name'
+        observed = $identityExposed
+        evidenceNodeIndexes = @($identityNodes | ForEach-Object { $_.index })
+        interpretation = 'A separate same-user process can read the fictional identity label exposed by this fixture.'
+    })
+    foreach ($rule in $rules) {
+        $matched = @($script:rows.ToArray() | Where-Object {
+            $_.automationId -eq $rule.control -and $_.name -eq $rule.canary
+        })
+        $findings += [pscustomobject]@{
+            id = $rule.id
+            observed = $matched.Count -gt 0
+            evidenceNodeIndexes = @($matched | ForEach-Object { $_.index })
+            interpretation = $rule.explanation
+        }
+    }
     $null = New-Item -ItemType Directory -Path $outputDirectory -Force
     $report = [pscustomobject]@{
-        schemaVersion = 1
+        schemaVersion = 2
+        hardened = [bool]$Hardened
         capturedAtUtc = [DateTime]::UtcNow.ToString('o')
         scope = 'launched synthetic fixture only'
         processId = $demo.Id
         truncated = $script:truncated
         nodeCount = $script:rows.Count
-        findings = @([pscustomobject]@{
-            id = 'synthetic-identity-in-accessible-name'
-            observed = $identityExposed
-            evidenceNodeIndexes = @($identityNodes | ForEach-Object { $_.index })
-            interpretation = 'A separate same-user process can read the fictional identity label exposed by this fixture.'
-        })
+        findings = $findings
         simulatedImpact = [pscustomobject]@{
             triggered = $identityExposed
             scenario = 'Fictional identity disclosure could support targeting if equivalent real data were exposed.'
@@ -88,7 +107,9 @@ try {
         }
         nodes = @($script:rows.ToArray())
     }
-    $destination = Join-Path $outputDirectory 'snapshot.json'
+    $reportName = 'snapshot.json'
+    if ($Hardened) { $reportName = 'snapshot-hardened.json' }
+    $destination = Join-Path $outputDirectory $reportName
     $report | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $destination -Encoding UTF8
     Write-Host "Captured $($script:rows.Count) nodes: $destination"
     Write-Host "Synthetic identity exposed through accessibility metadata: $identityExposed"

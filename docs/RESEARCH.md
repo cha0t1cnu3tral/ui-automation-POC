@@ -20,6 +20,12 @@ This is a concrete cross-process experiment. It does not test malware evasion, p
 
 Change an `AutomationProperties.Name` in `fixtures/Demo.ps1` to a unique synthetic marker, run the lab again, and check whether the new marker appears in the report. Keep the operating system, user, execution command, and other fixture controls constant. This tests provider metadata exposure directly.
 
+## Paired metadata remediation experiment
+
+Run `scripts/Test-Lab.ps1` to capture baseline and hardened fixtures. The baseline deliberately exposes exact fictional identity canaries through normal, visually masked, and disabled controls. Hardened mode changes only the accessible names to descriptions consistent with visible content. Compare findings and evidence node indexes in the two reports.
+
+The disabled control must remain disabled in both runs. This separates interaction state from metadata exposure. The test also checks that the password control remains identified and redacted. A passing result supports removing surplus metadata as a mitigation for these specific disclosures; it does not establish that all identity information or all UI Automation patterns are inaccessible.
+
 ## Defensive visibility experiment
 
 In an isolated machine you own, record the configured process-creation and PowerShell logging alongside the lab's timestamp and process ID. Document which logging is enabled before running the experiment. Compare observations with the expected PowerShell parent/child process launch and local JSON write.

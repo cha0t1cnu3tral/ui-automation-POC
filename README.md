@@ -28,6 +28,20 @@ The fixture deliberately exposes a fictional name, email, and address in the acc
 
 The report also contains an explicitly simulated targeting scenario. It performs no damaging action. Reading accessibility metadata alone does not establish the ability to damage a computer, obtain elevated privileges, or evade detection.
 
+## Presentation controls and metadata remediation
+
+The demo also tests a visually masked email and a disabled field. In baseline mode, each deliberately retains a fictional identity canary in its accessible name. The detector flags the exact canaries and links them to evidence nodes; it is a fixture-specific exposure detector, not an antivirus or malware classifier.
+
+Run the comparison:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Test-Lab.ps1
+```
+
+The test produces `snapshot.json` and `snapshot-hardened.json`. Hardened mode removes surplus identity data from accessible names while retaining descriptions of visible content. All three exact-canary findings should change from observed to absent. This does not eliminate every visible identity detail: the fictional customer name remains visible and accessible.
+
+Disabling a field restricts interaction; visual masking changes presentation. Neither is a data-access permission boundary. These experiments demonstrate metadata disclosure in the fixture, not a bypass of operating-system permissions or security products.
+
 ## Research questions
 
 - Which labels and identifiers appear in the control tree?
