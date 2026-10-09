@@ -1,60 +1,82 @@
-# Accessibility exposure lab
+﻿# UI Automation POC
 
-A Windows proof of concept for studying accessibility metadata in a controlled application. This is a starting point for defensive research into what an application exposes through its accessibility provider.
+What can another process learn from an app's accessibility tree?
 
-## Run
+This project explores that question with a small Windows app and completely fictional customer data. The app makes a few deliberate mistakes: it puts extra identity details in an accessibility label, masks an email on screen while leaving the full address in metadata, and disables a field without removing its metadata. A separate process inspects the app and saves what it finds.
 
-From Windows PowerShell 5.1 in this directory:
+The interesting part is the gap between what the screen shows, what accessibility exposes, and what a detector has enough evidence to notice.
 
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Run-Lab.ps1
-```
+## Try it
 
-The command starts a visible demo app containing synthetic data, captures its UI Automation control tree, writes `artifacts/snapshot.json`, and closes the demo. No installation or administrator privileges are required. The execution-policy override applies only to the launched process.
+You'll need Windows, Windows PowerShell 5.1, and an interactive desktop. There are no packages to install, and you can run it as a normal user.
 
-```powershell
-Get-Content .\artifacts\snapshot.json
-```
-
-## Scope
-
-The inspector accepts only the window handle of the demo process it starts, checks process ownership for each element, and limits traversal to 200 nodes and 12 levels. It records names, identifiers, control types, password flags, and supported pattern names. It does not retrieve text/value patterns, invoke controls, monitor keyboard input, enumerate the desktop, or contact the network.
-
-Names and identifiers can themselves disclose information. Use only synthetic data in this fixture. Password nodes have their names redacted; this is a collection policy, not a claim that every provider protects sensitive data correctly.
-
-## PII exposure demonstration
-
-The fixture deliberately exposes a fictional name, email, and address in the accessible name of `SyntheticIdentity`. The separate inspector checks for that exact synthetic canary and records a finding with its evidence node index. This demonstrates cross-process collection of identity-shaped metadata without searching other applications or collecting real PII.
-
-The report also contains an explicitly simulated targeting scenario. It performs no damaging action. Reading accessibility metadata alone does not establish the ability to damage a computer, obtain elevated privileges, or evade detection.
-
-## Presentation controls and metadata remediation
-
-The demo also tests a visually masked email and a disabled field. In baseline mode, each deliberately retains a fictional identity canary in its accessible name. The detector flags the exact canaries and links them to evidence nodes; it is a fixture-specific exposure detector, not an antivirus or malware classifier.
-
-Run the comparison:
+From the project directory:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Test-Lab.ps1
 ```
 
-The test produces `snapshot.json` and `snapshot-hardened.json`. Hardened mode removes surplus identity data from accessible names while retaining descriptions of visible content. All three exact-canary findings should change from observed to absent. This does not eliminate every visible identity detail: the fictional customer name remains visible and accessible.
+Two demo windows open in turn and close after inspection. The first exposes the fictional data. The second uses cleaned-up accessibility labels. The command checks both results and prints the detector comparison.
 
-Disabling a field restricts interaction; visual masking changes presentation. Neither is a data-access permission boundary. These experiments demonstrate metadata disclosure in the fixture, not a bypass of operating-system permissions or security products.
+`ExecutionPolicy Bypass` here is a process-local setting to run the lab scripts. It isn't an antivirus bypass and doesn't change the machine's policy.
 
-## Research questions
+## What you should see
 
-- Which labels and identifiers appear in the control tree?
-- Which controls advertise Value, Text, or Invoke patterns?
-- Is the password field identified as a password control?
-- How does changing the fixture's accessibility metadata change the snapshot?
+| Experiment | Baseline | Cleaned-up labels |
+| --- | --- | --- |
+| Extra fictional identity details in a label | Found | Removed |
+| Full fictional email behind a masked label | Found | Removed |
+| Fictional identity metadata on a disabled field | Found | Removed |
+| Password control name | Redacted | Redacted |
+| Launch-only detector's exposure assessment | Unknown | Unknown |
+| Instrumented detector's synthetic-data alert | Yes | No |
 
-Modify `fixtures/Demo.ps1` to explore those questions. A successful snapshot demonstrates metadata exposure in this fixture; it does not establish exploitability, permission bypass, or behavior in other applications.
+The cleaned-up app still exposes information that's intentionally visible, including the fictional customer's name. The fix removes surplus details; it doesn't make the interface secret or disable accessibility.
 
-## Layout
+## About the detection demo
 
-- `fixtures/Demo.ps1`: visible WPF demo with synthetic controls.
-- `scripts/Run-Lab.ps1`: scoped, read-only inspection and JSON export.
-- `artifacts/`: generated local reports (ignored by Git).
+The lab compares two toy detectors using different slices of the same event stream. One receives only a fixture-launch event. It can tell that a process started, but has no evidence of which data was read. Its answer is **unknown**, not "safe."
 
-Microsoft reference: [Navigate among UI Automation elements with TreeWalker](https://learn.microsoft.com/en-us/dotnet/framework/ui-automation/navigate-among-ui-automation-elements-with-treewalker).
+The other receives metadata observations logged by the inspector and flags the demo's `LAB-ONLY` markers. That gives it enough information to spot the fictional data exposure in the baseline run.
+
+These events are self-reported by our inspector. The demo app doesn't independently audit UI Automation reads, and another reader could omit the events. This is a simulation of a telemetry coverage gap, not a test of real antivirus or EDR detection. The rule recognizes synthetic markers; it doesn't classify a reader as malware.
+
+## Look at the evidence
+
+Each run writes local reports under `artifacts/`:
+
+- `snapshot.json`: baseline tree, findings, and cooperative events.
+- `snapshot-hardened.json`: the same experiment with cleaned-up labels.
+- `detection-comparison.json`: each toy detector's inputs and conclusions.
+
+Findings refer to node indexes so you can check the underlying evidence. Reports stay out of Git.
+
+For a single baseline run:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Run-Lab.ps1
+```
+
+Add `-Hardened` to inspect the cleaned-up fixture. To compare existing reports again, run `scripts/Compare-Detectors.ps1`.
+
+## What this proves
+
+In this deliberately configured WPF app, a separate process running as the same user can collect fictional identity details from accessible names. Visual masking and disabled controls don't remove that metadata. Removing surplus details from those names fixes the three specific disclosures we test.
+
+It doesn't establish a vulnerability in another app, a Windows permission bypass, an AV/EDR bypass, or the ability to damage a computer. The impact section of the snapshot is a clearly labeled scenario, with no destructive action behind it.
+
+## Keep experiments local
+
+The inspector starts its own fixture, uses that window's handle, and checks each element's process ID. Traversal stops at 200 nodes or 12 levels. It records metadata and supported pattern names, without reading text/value patterns or invoking controls. Password names are redacted.
+
+Use fictional data when changing the fixture. Accessibility names and IDs can contain sensitive information themselves. There is no desktop-wide collection, keyboard monitoring, or network transmission in the lab.
+
+## Where things live
+
+- `fixtures/Demo.ps1`: the app and its two metadata configurations.
+- `scripts/Run-Lab.ps1`: inspection, findings, and cooperative telemetry.
+- `scripts/Compare-Detectors.ps1`: the simulated detection comparison.
+- `scripts/Test-Lab.ps1`: the paired experiment and checks.
+- [docs/RESEARCH.md](docs/RESEARCH.md): research questions and evidence guidance.
+
+The tree traversal follows Microsoft's [UI Automation TreeWalker documentation](https://learn.microsoft.com/en-us/dotnet/framework/ui-automation/navigate-among-ui-automation-elements-with-treewalker).

@@ -28,6 +28,8 @@ The disabled control must remain disabled in both runs. This separates interacti
 
 ## Defensive visibility experiment
 
+The runnable toy comparison is `scripts/Compare-Detectors.ps1`, also executed by `Test-Lab.ps1`. It filters inspector-reported events into launch-only and metadata-observation views. Launch-only assessment remains unknown in both configurations; the cooperative observation rule flags synthetic canaries only in baseline mode. This models an instrumentation gap, not evasion. The fixture does not independently audit requests, and these self-reported events provide no assurance against an uncooperative reader.
+
 In an isolated machine you own, record the configured process-creation and PowerShell logging alongside the lab's timestamp and process ID. Document which logging is enabled before running the experiment. Compare observations with the expected PowerShell parent/child process launch and local JSON write.
 
 Do not infer that tree traversal is logged merely because process creation is logged. If your instrumentation cannot observe individual UI Automation reads, record that as an instrumentation limitation. Do not disable security controls to obtain a preferred result.

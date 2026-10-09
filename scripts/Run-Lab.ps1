@@ -34,6 +34,15 @@ function Read-LabNode {
         isEnabled = $info.IsEnabled
         supportedPatterns = $patterns
     })
+    $script:events.Add([pscustomobject]@{
+        type = 'metadata-observed'
+        timestampUtc = [DateTime]::UtcNow.ToString('o')
+        source = 'cooperative-inspector'
+        processId = $demo.Id
+        nodeIndex = $index
+        automationId = $info.AutomationId
+        syntheticCanaryObserved = (-not $info.IsPassword -and $name.StartsWith('LAB-ONLY '))
+    })
     $child = $script:walker.GetFirstChild($Element)
     while ($null -ne $child) {
         Read-LabNode -Element $child -Depth ($Depth + 1) -ParentIndex $index
@@ -49,6 +58,13 @@ try {
     )
     if ($Hardened) { $launchArguments += '-Hardened' }
     $demo = Start-Process -FilePath $powershell -ArgumentList $launchArguments -WindowStyle Hidden -PassThru
+    $script:events = New-Object 'System.Collections.Generic.List[object]'
+    $script:events.Add([pscustomobject]@{
+        type = 'fixture-process-started'
+        timestampUtc = [DateTime]::UtcNow.ToString('o')
+        source = 'cooperative-inspector'
+        processId = $demo.Id
+    })
     $deadline = [DateTime]::UtcNow.AddSeconds(15)
     do {
         $demo.Refresh()
@@ -91,7 +107,7 @@ try {
     }
     $null = New-Item -ItemType Directory -Path $outputDirectory -Force
     $report = [pscustomobject]@{
-        schemaVersion = 2
+        schemaVersion = 3
         hardened = [bool]$Hardened
         capturedAtUtc = [DateTime]::UtcNow.ToString('o')
         scope = 'launched synthetic fixture only'
@@ -106,6 +122,11 @@ try {
             action = 'Report only; no destructive operation or transmission.'
         }
         nodes = @($script:rows.ToArray())
+        telemetry = [pscustomobject]@{
+            source = 'cooperative-inspector'
+            limitation = 'Self-reported by the reader; not provider auditing, OS telemetry, or independent security monitoring.'
+            events = @($script:events.ToArray())
+        }
     }
     $reportName = 'snapshot.json'
     if ($Hardened) { $reportName = 'snapshot-hardened.json' }
